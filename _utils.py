@@ -5,7 +5,10 @@ import numpy as np
 import random
 from facenet_pytorch import MTCNN
 from PIL import Image, ImageOps
-from torchvision import transforms
+from torchvision import transforms, datasets
+from face_features_extraction import *
+import torch
+import joblib
 
 def crop_images(input_path, output_path):
     if not os.path.exists(output_path):
@@ -101,3 +104,75 @@ def augment_images_in_folders(image_folder, num_augmented_images_per_image=10):
                     augmented_image_filename = f"{os.path.splitext(image_file)[0]}_aug_{i+1}.jpg"
                     augmented_image_path = os.path.join(class_path, augmented_image_filename)
                     aug_img.save(augmented_image_path)
+
+def rename_files_in_directory(directory):
+    for folder_name in os.listdir(directory):
+        folder_path = os.path.join(directory, folder_name)
+
+        if os.path.isdir(folder_path):
+            file_index = 1
+
+            files = sorted(os.listdir(folder_path))
+
+            temp_names = []
+            for filename in files:
+                file_path = os.path.join(folder_path, filename)
+
+
+                if os.path.isfile(file_path):
+                    temp_filename = f"temp_{file_index}"
+                    temp_file_path = os.path.join(folder_path, temp_filename)
+    
+                    os.rename(file_path, temp_file_path)
+                    temp_names.append((temp_file_path, file_index))
+                    file_index += 1
+
+            file_index = 1
+
+
+            for temp_file_path, idx in temp_names:
+                file_extension = os.path.splitext(temp_file_path)[1]
+                new_filename = f"{folder_name}_{idx}{file_extension}.JPG"
+                new_file_path = os.path.join(folder_path, new_filename)
+                os.rename(temp_file_path, new_file_path)
+
+def normalise_string(string):
+    return string.lower().replace(' ', '_')
+
+def normalise_dict_keys(dictionary):
+    new_dict = dict()
+    for key in dictionary.keys():
+        new_dict[normalise_string(key)] = dictionary[key]
+    return new_dict
+
+def dataset_to_embeddings(dataset, model):
+    transform = transforms.Compose([
+        ExifOrientationNormalize(),
+        transforms.Resize(1024)
+    ])
+    embeddings = []
+    labels = []
+    for img_path, label in dataset.samples:
+        _, embedding = model(transform(Image.open(img_path).convert('RGB')))
+        if embedding is None:
+            continue
+        if embedding.shape[0] > 1:
+            embedding = embedding[0,:]
+        embeddings.append(embedding.flatten())
+        labels.append(label)
+    return np.stack(embeddings), labels
+
+def generate_embeddings(input_folder, output_folder):
+    torch.set_grad_enabled(False)
+
+    features_model = FacialFeaturesExtractor()
+    dataset = datasets.ImageFolder(input_folder)
+    embeddings, labels = dataset_to_embeddings(dataset, features_model)
+
+    dataset.class_to_idx = normalise_dict_keys(dataset.class_to_idx)
+    idx_to_class = {v:k for k,v in dataset.class_to_idx.items()}
+    labels = list(map(lambda idx: idx_to_class[idx], labels))
+    
+    np.savetxt(output_folder + os.path.sep + 'embeddings.txt', embeddings)
+    np.savetxt(output_folder + os.path.sep + 'labels.txt', np.array(labels, dtype=str).reshape(-1, 1), fmt="%s")
+    joblib.dump(dataset.class_to_idx, output_folder + os.path.sep + 'class_to_idx.pkl')
