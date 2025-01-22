@@ -16,3 +16,5 @@ if enable_augmentations:
 rename_files_in_directory("images")
 
 generate_embeddings("images", "embeddings")
+
+train_face_classifier()

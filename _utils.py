@@ -9,6 +9,9 @@ from torchvision import transforms, datasets
 from face_features_extraction import *
 import torch
 import joblib
+from sklearn.model_selection import GridSearchCV
+from sklearn import metrics
+from sklearn.neighbors import KNeighborsClassifier
 
 def crop_images(input_path, output_path):
     if not os.path.exists(output_path):
@@ -176,3 +179,26 @@ def generate_embeddings(input_folder, output_folder):
     np.savetxt(output_folder + os.path.sep + 'embeddings.txt', embeddings)
     np.savetxt(output_folder + os.path.sep + 'labels.txt', np.array(labels, dtype=str).reshape(-1, 1), fmt="%s")
     joblib.dump(dataset.class_to_idx, output_folder + os.path.sep + 'class_to_idx.pkl')
+
+def train_face_classifier():
+    embeddings = np.loadtxt("embeddings/embeddings.txt")
+    labels = np.loadtxt("embeddings/labels.txt")
+    class_to_idx = joblib.load("embeddings/class_to_idx.txt")
+
+    clf = GridSearchCV(
+        estimator=KNeighborsClassifier(),
+        param_grid={'n_neighbors':[3,5,10], 'metric':['euclidean', 'manhattan', 'cosine']},
+        cv=3
+    )
+    clf.fit(embeddings, labels)
+    classifier = clf.best_estimator_
+    features_extractor = FacialFeaturesExtractor()
+    idx_to_class = {v:k for k,v in class_to_idx.items()}
+
+    target_names = map(lambda i:i[1], sorted(idx_to_class.items(), key=lambda i:i[0]))
+    print(metrics.classification_report(labels, classifier.predict(embeddings), target_names=list(target_names)))
+
+    if not os.path.isdir('model'):
+        os.mkdir('model')
+    model_path = os.path.join('model', 'face_recogniser_KNN_triplet.pkl')
+    joblib.dump(FaceRecogniser(features_extractor, classifier, idx_to_class), model_path)
