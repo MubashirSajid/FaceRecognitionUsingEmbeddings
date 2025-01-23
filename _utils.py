@@ -4,7 +4,7 @@ import torch
 import numpy as np
 import random
 from facenet_pytorch import MTCNN
-from PIL import Image, ImageOps
+from PIL import Image, ImageOps, ImageDraw, ImageFont
 from torchvision import transforms, datasets
 from face_features_extraction import *
 import torch
@@ -180,7 +180,7 @@ def generate_embeddings(input_folder, output_folder):
     np.savetxt(output_folder + os.path.sep + 'labels.txt', np.array(labels, dtype=str).reshape(-1, 1), fmt="%s")
     joblib.dump(dataset.class_to_idx, output_folder + os.path.sep + 'class_to_idx.pkl')
 
-def train_face_classifier():
+def train_face_classifier(model_name):
     embeddings = np.loadtxt("embeddings/embeddings.txt")
     labels = np.loadtxt("embeddings/labels.txt")
     class_to_idx = joblib.load("embeddings/class_to_idx.txt")
@@ -200,5 +200,44 @@ def train_face_classifier():
 
     if not os.path.isdir('model'):
         os.mkdir('model')
-    model_path = os.path.join('model', 'face_recogniser_KNN_triplet.pkl')
+    model_path = os.path.join('model', model_name)
     joblib.dump(FaceRecogniser(features_extractor, classifier, idx_to_class), model_path)
+
+def draw_bb_on_img(faces, img):
+    draw = ImageDraw.Draw(img)
+    fs = max(20, round(img.size[0] * img.size[1] * 0.000005))
+    font = ImageFont.truetype('fonts/font.ttf', fs)
+    margin = 5
+
+    for face in faces:
+        text = "%s %.2f%%" % (face.top_prediction.label.upper(), face.top_prediction.confidence * 100)
+        
+        text_bbox = draw.textbbox((0, 0), text, font=font)
+        text_width = text_bbox[2] - text_bbox[0]
+        text_height = text_bbox[3] - text_bbox[1]
+
+        # Bounding box
+        draw.rectangle(
+            (
+                (int(face.bb.left), int(face.bb.top)),
+                (int(face.bb.right), int(face.bb.bottom))
+            ),
+            outline='green',
+            width=2
+        )
+
+        draw.rectangle(
+            (
+                (int(face.bb.left - margin), int(face.bb.bottom) + margin),
+                (int(face.bb.left + text_width + margin), int(face.bb.bottom) + text_height + 3 * margin)
+            ),
+            fill='black'
+        )
+
+        # Text
+        draw.text(
+            (int(face.bb.left), int(face.bb.bottom) + 2 * margin),
+            text,
+            font=font,
+            fill='white'  
+        )

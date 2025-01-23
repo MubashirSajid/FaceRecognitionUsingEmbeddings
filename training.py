@@ -6,6 +6,7 @@ config.read("config.ini")
 enable_crop = eval(config["TRAINING"]["crop"])
 enable_augmentations = eval(config["TRAINING"]["apply_augmentation"])
 augmentations_value = eval(config["TRAINING"]["number_of_augmentations"])
+model_name = eval(config["TRAINING"]["model_name"])
 
 if enable_crop:
     crop_images("images", "images")
@@ -17,4 +18,4 @@ rename_files_in_directory("images")
 
 generate_embeddings("images", "embeddings")
 
-train_face_classifier()
+train_face_classifier(model_name=model_name)
